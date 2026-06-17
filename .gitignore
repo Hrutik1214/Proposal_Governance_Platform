@@ -1,0 +1,21 @@
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# .NET / C#
+bin/
+obj/
+.vs/
+*.user
+
+# IDEs & System
+.DS_Store
+.idea/
+*.log
