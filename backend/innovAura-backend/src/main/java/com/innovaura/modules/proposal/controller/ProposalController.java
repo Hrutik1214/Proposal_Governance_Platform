@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Proposal Management REST Controller
+ */
 @RestController
 @RequestMapping("/api/proposals")
 public class ProposalController {
