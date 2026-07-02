@@ -24,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Peer Review & Due Diligence Service
+ */
 @Service
 public class ReviewService {
 
