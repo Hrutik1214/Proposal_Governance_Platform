@@ -18,7 +18,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Marketplace & Proposal Discovery Service
+ */
 @Service
+@Transactional(readOnly = true)
 public class MarketplaceService {
 
     @Autowired

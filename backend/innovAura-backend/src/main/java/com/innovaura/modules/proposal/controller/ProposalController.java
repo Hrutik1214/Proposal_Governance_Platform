@@ -29,13 +29,13 @@ public class ProposalController {
     private UserRepository userRepository;
 
     private String getCurrentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : "";
     }
 
     private User getCurrentUserEntity() {
         String username = getCurrentUsername();
-        return userRepository.findByUsername(username).orElse(null);
+        return username.isEmpty() ? null : userRepository.findByUsername(username).orElse(null);
     }
 
     private String getCurrentUserRole() {
