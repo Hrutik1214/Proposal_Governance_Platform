@@ -21,6 +21,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Identity & User Management Service
+ */
 @Service
 public class UserService {
 
