@@ -21,6 +21,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Founder & Startup KYC Verification Service
+ */
 @Service
 public class VerificationService {
 
