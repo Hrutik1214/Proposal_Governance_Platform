@@ -29,6 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Startup Trust Score Calculation Engine
+ */
 @Service
 public class TrustScoreService {
 
