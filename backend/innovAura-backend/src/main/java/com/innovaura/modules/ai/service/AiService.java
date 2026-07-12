@@ -45,9 +45,8 @@ public class AiService {
     public AiChatResponse founderChat(AiChatRequest request, Integer userId, String role) {
         List<Proposal> proposals = proposalRepository.findBySubmitterId(userId);
 
-        String systemPrompt = "You are an expert AI Startup Advisor helping a founder on InnovAura, a proposal governance platform.\n" +
-                "Proposals owned by founder: " + proposals.stream().map(Proposal::getTitle).collect(Collectors.joining(", ")) + "\n" +
-                "Be specific, actionable, and professional. Max 600 words.";
+        String systemPrompt = "You are an expert AI Startup Advisor helping a founder on InnovAura platform. Proposals: " + 
+                proposals.stream().map(Proposal::getTitle).collect(Collectors.joining(", ")) + ". Max 600 words.";
 
         String responseText = callGeminiOrFallback(systemPrompt, request.getPrompt());
 
