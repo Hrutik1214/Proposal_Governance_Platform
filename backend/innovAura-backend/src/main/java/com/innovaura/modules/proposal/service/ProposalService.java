@@ -47,12 +47,8 @@ public class ProposalService {
 
     @Transactional(readOnly = true)
     public List<ProposalResponse> getAllProposals(String role, Integer userId) {
-        List<Proposal> proposals;
-
-        if (RoleConstants.ADMIN.equalsIgnoreCase(role)) {
-            proposals = proposalRepository.findAll();
-        } else if (RoleConstants.FOUNDER.equalsIgnoreCase(role)) {
-            proposals = proposalRepository.findBySubmitterId(userId);
+        List<Proposal> proposals = RoleConstants.ADMIN.equalsIgnoreCase(role) ? 
+                proposalRepository.findAll() : proposalRepository.findBySubmitterId(userId);
         } else if (RoleConstants.REVIEWER.equalsIgnoreCase(role) || RoleConstants.INVESTOR.equalsIgnoreCase(role)) {
             proposals = proposalRepository.findByStatusNot("Draft");
         } else {
