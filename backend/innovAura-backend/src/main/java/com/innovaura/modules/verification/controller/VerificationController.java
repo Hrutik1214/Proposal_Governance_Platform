@@ -23,15 +23,14 @@ public class VerificationController {
     private UserRepository userRepository;
 
     private Integer getCurrentUserId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String username = authentication.getName();
-        User user = userRepository.findByUsername(username).orElse(null);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        User user = auth != null ? userRepository.findByUsername(auth.getName()).orElse(null) : null;
         return user != null ? user.getId() : 0;
     }
 
     private String getCurrentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : "";
     }
 
     @PostMapping("/founder/submit")
