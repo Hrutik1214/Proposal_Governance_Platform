@@ -25,9 +25,8 @@ public class TrustController {
     private UserRepository userRepository;
 
     private Integer getCurrentUserId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String username = authentication.getName();
-        User user = userRepository.findByUsername(username).orElse(null);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        User user = auth != null ? userRepository.findByUsername(auth.getName()).orElse(null) : null;
         return user != null ? user.getId() : 0;
     }
 
