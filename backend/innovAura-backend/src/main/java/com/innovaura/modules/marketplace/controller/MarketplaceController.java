@@ -29,10 +29,9 @@ public class MarketplaceController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer pageSize
     ) {
-        Object response = marketplaceService.browse(
+        return ResponseEntity.ok(marketplaceService.browse(
                 industry, category, department, minFunding, maxFunding, minEquity, maxEquity, sortBy, search, page, pageSize
-        );
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/search")
