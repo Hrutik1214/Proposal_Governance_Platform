@@ -24,16 +24,13 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResponse response = userService.login(request);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(userService.login(request));
     }
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String username = authentication.getName();
-        UserResponse response = userService.getCurrentUser(username);
-        return ResponseEntity.ok(response);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return ResponseEntity.ok(userService.getCurrentUser(auth.getName()));
     }
 
     @PutMapping("/profile")
