@@ -17,10 +17,10 @@ public class MarketplaceMapper {
         SubmitterDTO submitterDTO = SubmitterDTO.builder()
                 .submitterId(proposal.getSubmitterId())
                 .fullName(submitterUser != null && submitterUser.getFullName() != null ? submitterUser.getFullName() : "Unknown User")
-                .role(submitterUser != null && submitterUser.getRole() != null ? submitterUser.getRole() : "Submitter")
-                .department(submitterUser != null && submitterUser.getDepartment() != null ? submitterUser.getDepartment() : "")
-                .patentVerificationStatus(submitterUser != null && submitterUser.getPatentVerificationStatus() != null ? submitterUser.getPatentVerificationStatus() : "Unverified")
-                .patentId(submitterUser != null && submitterUser.getPatentId() != null ? submitterUser.getPatentId() : "")
+                .role(submitterUser != null ? submitterUser.getRole() : "Submitter")
+                .department(submitterUser != null ? submitterUser.getDepartment() : "")
+                .patentVerificationStatus(submitterUser != null ? submitterUser.getPatentVerificationStatus() : "Unverified")
+                .patentId(submitterUser != null ? submitterUser.getPatentId() : "")
                 .build();
 
         return MarketplaceListingResponse.builder()
