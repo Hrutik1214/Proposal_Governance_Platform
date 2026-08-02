@@ -25,8 +25,7 @@ public class UserMapper {
     }
 
     public LoginResponse toLoginResponse(User user, String token) {
-        if (user == null) return null;
-        return LoginResponse.builder()
+        return user == null ? null : LoginResponse.builder()
                 .token(token)
                 .id(user.getId())
                 .username(user.getUsername())
