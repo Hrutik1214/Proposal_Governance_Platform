@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  mysql-db:
+    image: mysql:8.0
+    container_name: innovaura-mysql-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-proposal_governance}
+      MYSQL_USER: ${MYSQL_USER:-governance_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ProductionPassword123!}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-RootProductionPassword123!}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend-api:
+    build:
+      context: ./backend/ProposalGovernance.Api
+      dockerfile: Dockerfile
+    container_name: innovaura-backend-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Server=mysql-db;Port=3306;Database=${MYSQL_DATABASE:-proposal_governance};User Id=${MYSQL_USER:-governance_user};Password=${MYSQL_PASSWORD:-ProductionPassword123!};"
+      Jwt__Key: ${JWT_KEY:-SuperSecretProductionJWTKeyMinimum256BitsLong123456789!}
+      Jwt__Issuer: ${JWT_ISSUER:-ProposalGovernanceApi}
+      Jwt__Audience: ${JWT_AUDIENCE:-ProposalGovernanceClient}
+      Gemini__ApiKey: ${GEMINI_API_KEY:-}
+      Razorpay__KeyId: ${RAZORPAY_KEY:-rzp_test_key_placeholder}
+      Razorpay__KeySecret: ${RAZORPAY_SECRET:-rzp_test_secret_placeholder}
+      Razorpay__WebhookSecret: ${RAZORPAY_WEBHOOK_SECRET:-rzp_test_webhook_secret_placeholder}
+      RAZORPAY_KEY: ${RAZORPAY_KEY:-rzp_test_key_placeholder}
+      RAZORPAY_SECRET: ${RAZORPAY_SECRET:-rzp_test_secret_placeholder}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-rzp_test_webhook_secret_placeholder}
+      Storage__Provider: ${STORAGE_PROVIDER:-Local}
+    ports:
+      - "5031:5031"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    volumes:
+      - uploads-data:/app/wwwroot/uploads
+
+  frontend-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: innovaura-frontend-web
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend-api
+
+volumes:
+  mysql-data:
+  uploads-data:
