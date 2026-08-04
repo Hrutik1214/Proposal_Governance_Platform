@@ -1,13 +1,13 @@
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (typeof window !== 'undefined') {
-    // Route to Spring Boot backend API port 8080
+    // Route dynamically to Spring Boot backend API port 8080 (AWS EC2 / Localhost)
     if (window.location.port !== '8080' && window.location.port !== '') {
       return `http://${window.location.hostname}:8080/api`;
     }
     return '/api';
   }
-  return 'http://localhost:8080/api';
+  return 'http://13.203.82.193:8080/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

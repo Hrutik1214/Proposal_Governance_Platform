@@ -1,104 +1,94 @@
-# AWS Production Deployment Guide
+# AWS EC2 Ubuntu Production Deployment Guide
 
-This document provides complete instructions for building, configuring, and deploying the **InnovAura — Proposal Governance & Startup Investment Platform** to AWS (EC2, RDS MySQL, S3, CloudFront).
-
----
-
-## 1. Prerequisites
-- **AWS Account** with access to EC2, RDS, S3, and Route 53 / CloudFront.
-- **Docker** & **Docker Compose** installed on EC2 instance or local deployment machine.
-- **.NET 10 SDK** (for manual backend publishing).
-- **Node.js 20+** & **npm** (for manual frontend building).
-- **Git** (for code checkout).
+This document provides complete instructions for building, configuring, and deploying the **InnovAura — Proposal Governance & Startup Investment Platform** to AWS EC2 Ubuntu Server at Elastic IP **`13.203.82.193`**.
 
 ---
 
-## 2. Environment Variables Configuration
+## 1. Server & Elastic IP Overview
+- **AWS Region**: ap-south-1 (Mumbai)
+- **Elastic IP Address**: `13.203.82.193`
+- **OS**: Ubuntu Server 22.04 LTS
+- **Frontend URL**: `http://13.203.82.193:5173` (or port 80 via Nginx)
+- **Spring Boot API URL**: `http://13.203.82.193:8080/api`
+- **ASP.NET Infrastructure API**: `http://13.203.82.193:5031`
+- **SignalR Notification Hub**: `http://13.203.82.193:5031/hubs/notifications`
 
-Copy `.env.example` to `.env` and fill in production secrets:
+---
 
+## 2. AWS Security Group Configuration
+
+Ensure the following inbound rules are open in your AWS EC2 Security Group (`sg-innovaura`):
+
+| Type | Protocol | Port Range | Source | Purpose |
+|---|---|---|---|---|
+| SSH | TCP | 22 | My IP / Anywhere | Terminal SSH Management |
+| HTTP | TCP | 80 | Anywhere (`0.0.0.0/0`) | Production Web Access |
+| Custom TCP | TCP | 8080 | Anywhere (`0.0.0.0/0`) | Spring Boot REST API |
+| Custom TCP | TCP | 5173 | Anywhere (`0.0.0.0/0`) | React Frontend Dev Server |
+| Custom TCP | TCP | 5031 | Anywhere (`0.0.0.0/0`) | ASP.NET SignalR & Files |
+| MySQL | TCP | 3306 | Localhost / EC2 Security Group | Shared Database |
+
+---
+
+## 3. EC2 Initial Ubuntu Server Setup
+
+SSH into your AWS EC2 instance:
+```bash
+ssh -i "KeyPair.pem" ubuntu@13.203.82.193
+```
+
+Update system dependencies and install Java 17, Maven, Node.js 20, and MySQL 8:
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y openjdk-17-jdk maven nodejs npm mysql-server
+```
+
+---
+
+## 4. Environment Variables Setup
+
+Create your production `.env` file on EC2:
 ```bash
 cp .env.example .env
 ```
 
-### Essential Production Variables
-| Variable | Description | Example / Recommended Value |
-|---|---|---|
-| `MYSQL_DATABASE` | Database name | `proposal_governance` |
-| `MYSQL_USER` | Production database user | `governance_user` |
-| `MYSQL_PASSWORD` | Database user password | *Strong generated password* |
-| `MYSQL_ROOT_PASSWORD` | MySQL root user password | *Strong generated password* |
-| `DATABASE_CONNECTION_STRING` | MySQL Connection String | `Server=mysql-db;Port=3306;Database=proposal_governance;User Id=governance_user;Password=SecuredPass;` |
-| `JWT_KEY` | JWT Signing Key (Min 256-bits) | *High entropy base64 string* |
-| `GEMINI_API_KEY` | Google Gemini AI Key | `AIzaSy...` |
-| `STORAGE_PROVIDER` | Storage provider mode | `Local` or `S3` |
-| `S3_BUCKET_NAME` | AWS S3 Bucket Name | `innovaura-proposal-documents-prod` |
-
----
-
-## 3. Docker Deployment (Recommended)
-
-To spin up MySQL, the .NET Backend API, and the Nginx Frontend SPA in isolated production containers:
-
-### Step 1: Build & Launch Containers
-```bash
-docker compose --env-file .env up -d --build
-```
-
-### Step 2: Verify Container Status
-```bash
-docker compose ps
-```
-
-### Step 3: View Container Logs
-```bash
-docker compose logs -f backend-api
+Set AWS EC2 Elastic IP:
+```env
+VITE_API_URL=http://13.203.82.193:8080/api
+VITE_SIGNALR_URL=http://13.203.82.193:5031/hubs/notifications
+SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3306/proposal_governance?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+SPRING_DATASOURCE_USERNAME=root
+SPRING_DATASOURCE_PASSWORD=Atharv@2002
+CORS_ALLOWED_ORIGINS=http://13.203.82.193,http://13.203.82.193:5173,http://13.203.82.193:8080,http://13.203.82.193:5031
 ```
 
 ---
 
-## 4. Manual Production Build Commands
+## 5. Launching Services on EC2
 
-If deploying without Docker Compose:
+### Step 1: Start Spring Boot Backend (Port 8080)
+```bash
+cd backend/innovAura-backend
+nohup mvn spring-boot:run > spring-backend.log 2>&1 &
+```
 
-### Frontend Production Build
+### Step 2: Start ASP.NET Core Infrastructure (Port 5031)
+```bash
+cd backend/ProposalGovernance.Api
+nohup dotnet run > dotnet-backend.log 2>&1 &
+```
+
+### Step 3: Start React Frontend (Port 5173 / Port 80)
 ```bash
 cd frontend
 npm ci
-npm run build
-# Production assets will be emitted in frontend/dist/
-```
-
-### Backend Production Publication
-```bash
-cd backend/ProposalGovernance.Api
-dotnet publish -c Release -o ./publish /p:UseAppHost=false
-# Compiled binaries will be emitted in backend/ProposalGovernance.Api/publish/
+nohup npm run dev -- --host 0.0.0.0 --port 5173 > frontend.log 2>&1 &
 ```
 
 ---
 
-## 5. Health Checks & Verification Endpoints
+## 6. Health Check Endpoints
 
-The API exposes production health endpoints suitable for AWS ALB (Application Load Balancer) Target Group health checks:
-
-- **Liveness Health Check**: `GET http://<your-domain-or-ip>:5031/health`
-- **Readiness Health Check**: `GET http://<your-domain-or-ip>:5031/ready`
-
-Expected Response:
-```
-HTTP/1.1 200 OK
-Healthy
-```
-
----
-
-## 6. Future AWS S3 Migration Notes
-
-The platform features an abstract file storage layer (`IFileStorageService` in `Services/IFileStorageService.cs`).
-
-To migrate file uploads from local disk storage (`wwwroot/uploads`) to AWS S3:
-1. Create an AWS S3 Bucket (e.g. `innovaura-proposal-documents-prod`).
-2. Add `AWSSDK.S3` package to `ProposalGovernance.Api.csproj`.
-3. Set environment variable `STORAGE_PROVIDER=S3` in `.env` or AWS Parameter Store.
-4. Zero code changes are required in business controllers or frontend pages.
+- **Spring Boot Health**: `GET http://13.203.82.193:8080/actuator/health`
+- **Swagger Documentation**: `GET http://13.203.82.193:8080/swagger-ui.html`
+- **SignalR Hub Status**: `GET http://13.203.82.193:5031/hubs/notifications`

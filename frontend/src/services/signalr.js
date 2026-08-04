@@ -26,7 +26,7 @@ export const initSignalR = (userId, role) => {
       }
       return `/hubs/notifications`;
     }
-    return 'http://localhost:5031/hubs/notifications';
+    return 'http://13.203.82.193:5031/hubs/notifications';
   };
 
   connection = new signalR.HubConnectionBuilder()
