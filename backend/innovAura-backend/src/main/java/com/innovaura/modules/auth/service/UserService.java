@@ -109,10 +109,17 @@ public class UserService {
         extraClaims.put("role", user.getRole());
         extraClaims.put("email", user.getEmail());
 
+        org.springframework.security.core.userdetails.UserDetails userDetails = 
+                new org.springframework.security.core.userdetails.User(
+                        user.getUsername(),
+                        user.getPasswordHash(),
+                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
+                );
+
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                user.getUsername(),
+                userDetails,
                 null,
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
+                userDetails.getAuthorities()
         );
 
         String token = jwtTokenProvider.generateToken(authentication, extraClaims);
