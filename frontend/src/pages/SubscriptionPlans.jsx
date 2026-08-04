@@ -22,16 +22,55 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
+  const getDefaultPlans = (role) => {
+    if (role === 'Founder') {
+      return [
+        {
+          id: 1,
+          name: 'Starter Founder',
+          description: 'Basic proposal submission, community peer reviews, and standard platform access.',
+          price: 0,
+        },
+        {
+          id: 2,
+          name: 'Premium Founder',
+          description: 'Unlimited proposal submissions, priority Gemini AI analysis, verified founder badge, and direct investor messaging.',
+          price: 20,
+        }
+      ];
+    }
+    return [
+      {
+        id: 3,
+        name: 'Starter Investor',
+        description: 'Browse marketplace proposals, view basic startup metrics, and express investment interest.',
+        price: 0,
+      },
+      {
+        id: 4,
+        name: 'Premium Investor',
+        description: 'Full pitch deck downloads, priority due diligence reports, direct founder consultation, and real-time deal alerts.',
+        price: 20,
+      }
+    ];
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const plansData = await api.get(`/subscription/plans?role=${user.role}`);
-      setPlans(Array.isArray(plansData) ? plansData : []);
+      const defaultRolePlans = getDefaultPlans(user.role);
+      if (Array.isArray(plansData) && plansData.length > 0) {
+        setPlans(plansData);
+      } else {
+        setPlans(defaultRolePlans);
+      }
 
       const myData = await api.get('/subscription/my');
       setCurrentPlan(myData.hasActive ? myData.data : null);
     } catch (err) {
       console.error('Failed to load subscription data', err);
+      setPlans(getDefaultPlans(user.role));
     } finally {
       setLoading(false);
     }
