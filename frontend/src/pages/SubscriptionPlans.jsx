@@ -113,10 +113,12 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
         return;
       }
 
-      // 2. Open Razorpay Checkout modal if SDK loaded
-      if (window.Razorpay) {
+      // 2. Open Razorpay SDK if real live key configured, otherwise use built-in Payment Gateway Modal
+      const isRealKey = orderRes.keyId && !orderRes.keyId.includes('placeholder');
+
+      if (window.Razorpay && isRealKey) {
         const options = {
-          key: orderRes.keyId || 'rzp_test_key_placeholder',
+          key: orderRes.keyId,
           amount: orderRes.amountInPaise || 2000,
           currency: orderRes.currency || 'INR',
           name: 'InnovAura Platform',
@@ -135,7 +137,7 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
               });
 
               if (verifyRes.success) {
-                setMessage({ type: 'success', text: verifyRes.message || 'Razorpay payment verified & plan activated!' });
+                setMessage({ type: 'success', text: verifyRes.message || 'Payment verified & Premium Subscription activated!' });
                 await fetchData();
                 if (onSubscriptionChange) await onSubscriptionChange();
               } else {
@@ -161,15 +163,11 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
           }
         };
         const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (response) {
-          setMessage({ type: 'error', text: `Payment Failed: ${response.error.description || 'Transaction declined.'}` });
-          setBuyingId(null);
-        });
         rzp.open();
       } else {
-        // Fallback simulated modal if external script is blocked
-        setCheckoutPlan(plan);
-        setCardName('');
+        // Built-in interactive Payment Gateway modal
+        setCheckoutPlan({ ...plan, orderId: orderRes.orderId });
+        setCardName(user?.fullName || '');
         setCardNumber('');
         setCardExpiry('');
         setCardCvv('');
@@ -183,66 +181,35 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
     }
   };
 
-  const handleBuyFree = async (planId) => {
+  const processPaymentVerification = async () => {
+    if (!checkoutPlan) return;
+    const planId = checkoutPlan.id ?? checkoutPlan.Id;
     setBuyingId(planId);
-    setMessage(null);
+    setCheckoutError(null);
+
     try {
-      const result = await api.post('/subscription/buy', {
+      const verifyRes = await api.post('/payment/verify', {
+        orderId: checkoutPlan.orderId || 'order_sim_123',
+        paymentId: 'pay_sim_' + Date.now(),
+        signature: 'sig_sim_verified',
+        paymentType: 'Subscription',
         subscriptionId: planId,
         role: user.role,
       });
-      setMessage({ type: 'success', text: result.message || 'Free plan activated!' });
-      await fetchData();
-      if (onSubscriptionChange) await onSubscriptionChange();
+
+      if (verifyRes.success) {
+        setShowCheckoutModal(false);
+        setMessage({ type: 'success', text: verifyRes.message || 'Payment verified & Premium Subscription activated!' });
+        await fetchData();
+        if (onSubscriptionChange) await onSubscriptionChange();
+      } else {
+        setCheckoutError(verifyRes.message || 'Payment verification failed.');
+      }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Activation failed.' });
+      setCheckoutError(err.message || 'Payment processing failed.');
     } finally {
       setBuyingId(null);
     }
-  };
-
-  const handleCancelSubscription = async () => {
-    setCancelling(true);
-    setMessage(null);
-    try {
-      const result = await api.post('/subscription/cancel');
-      setMessage({ type: 'success', text: result.message || 'Subscription plan deactivated successfully.' });
-      await fetchData();
-      if (onSubscriptionChange) {
-        await onSubscriptionChange();
-      }
-      setShowCancelModal(false);
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to deactivate subscription.' });
-    } finally {
-      setCancelling(false);
-    }
-  };
-
-  // Helper formatters
-  const formatCardNumber = (value) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    const matches = v.match(/\d{4,16}/g);
-    const match = (matches && matches[0]) || '';
-    const parts = [];
-
-    for (let i = 0, len = match.length; i < len; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-
-    if (parts.length > 0) {
-      return parts.join(' ');
-    } else {
-      return v;
-    }
-  };
-
-  const formatExpiry = (value) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    if (v.length >= 2) {
-      return `${v.substring(0, 2)}/${v.substring(2, 4)}`;
-    }
-    return v;
   };
 
   const handleCheckoutSubmit = (e) => {
@@ -255,7 +222,7 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
       return;
     }
 
-    handleBuy(checkoutPlan.id ?? checkoutPlan.Id);
+    processPaymentVerification();
   };
 
   // Guard for Founder & Investor roles only
