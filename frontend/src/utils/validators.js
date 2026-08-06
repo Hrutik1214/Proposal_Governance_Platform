@@ -10,7 +10,7 @@ export const AADHAAR_REGEX = /^[2-9]\d{11}$/;
 export const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 export const CIN_REGEX = /^[LUu][0-9]{5}[A-Za-z]{2}[0-9]{4}[A-Za-z]{3}[0-9]{6}$/;
 export const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,50}$/;
-export const CONTACT_REGEX = /^\+?[0-9\s-]{10,15}$/;
+export const CONTACT_REGEX = /^(?:\+91[\s-]?)?[6789]\d{9}$/;
 export const PATENT_REGEX = /^[a-zA-Z0-9-]{5,30}$/;
 
 /**
@@ -87,6 +87,42 @@ export const validateDateRange = (startDateStr, endDateStr) => {
 };
 
 /**
+ * Validates Card Expiry Date (MM/YY) ensuring it is in the future
+ */
+export const validateCardExpiryDate = (cardExpiry) => {
+  if (!cardExpiry || !cardExpiry.trim()) {
+    return { isValid: false, message: 'Card Expiry Date is required.' };
+  }
+
+  const cleanExpiry = cardExpiry.trim();
+  if (!/^(0[1-9]|1[0-2])\/?([0-9]{2})$/.test(cleanExpiry)) {
+    return { isValid: false, message: 'Expiry Date must be in MM/YY format (e.g. 12/28).' };
+  }
+
+  const [monthStr, yearStr] = cleanExpiry.split('/');
+  const expMonth = parseInt(monthStr, 10);
+  const expYear = 2000 + parseInt(yearStr, 10);
+
+  if (expMonth < 1 || expMonth > 12) {
+    return { isValid: false, message: 'Expiry Month must be between 01 and 12.' };
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-indexed (Jan = 1)
+
+  if (expYear < currentYear || (expYear === currentYear && expMonth < currentMonth)) {
+    return { isValid: false, message: 'Card has expired! Expiry Date must be a future date (e.g. 12/28).' };
+  }
+
+  if (expYear > currentYear + 25) {
+    return { isValid: false, message: 'Expiry Year cannot be more than 25 years in the future.' };
+  }
+
+  return { isValid: true, message: '' };
+};
+
+/**
  * Validates Credit / Debit card details for payment modal (10-30 char name, 16 digit card, unexpired MM/YY)
  */
 export const validateCardDetails = (cardName, cardNumber, cardExpiry, cardCvv) => {
@@ -108,25 +144,10 @@ export const validateCardDetails = (cardName, cardNumber, cardExpiry, cardCvv) =
     return { isValid: false, message: 'Card Number must be a valid 16-digit number.' };
   }
 
-  // 3. Expiry Date (MM/YY) and unexpired check
-  if (!cardExpiry || !/^(0[1-9]|1[0-2])\/?([0-9]{2})$/.test(cardExpiry)) {
-    return { isValid: false, message: 'Expiry Date must be in MM/YY format (e.g. 12/28).' };
-  }
-
-  const [monthStr, yearStr] = cardExpiry.split('/');
-  const expMonth = parseInt(monthStr, 10);
-  const expYear = 2000 + parseInt(yearStr, 10);
-
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1; // 1-indexed (Jan = 1, Dec = 12)
-
-  if (expYear < currentYear || (expYear === currentYear && expMonth < currentMonth)) {
-    return { isValid: false, message: 'Card has expired. Please use an unexpired card date.' };
-  }
-
-  if (expYear > currentYear + 25) {
-    return { isValid: false, message: 'Expiry year cannot exceed 25 years in the future.' };
+  // 3. Expiry Date (MM/YY) and future date check
+  const expiryVal = validateCardExpiryDate(cardExpiry);
+  if (!expiryVal.isValid) {
+    return expiryVal;
   }
 
   // 4. CVV (3-4 digits)
@@ -138,15 +159,31 @@ export const validateCardDetails = (cardName, cardNumber, cardExpiry, cardCvv) =
 };
 
 /**
- * Validates Contact Number
+ * Validates Contact Number (10 digits starting with 6, 7, 8, or 9)
  */
 export const validateContactNumber = (contactNumber) => {
   if (!contactNumber || !contactNumber.trim()) {
     return { isValid: false, message: 'Contact Number is required.' };
   }
-  if (!CONTACT_REGEX.test(contactNumber.trim())) {
-    return { isValid: false, message: 'A valid Contact Number is required (e.g. +91 98123 45678).' };
+  const trimmed = contactNumber.trim();
+  const digits = trimmed.replace(/\D/g, '');
+
+  let coreNumber = digits;
+  if (digits.length === 12 && digits.startsWith('91')) {
+    coreNumber = digits.substring(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    coreNumber = digits.substring(1);
   }
+
+  if (coreNumber.length !== 10) {
+    return { isValid: false, message: 'Contact Number must be a valid 10-digit number (e.g. 9876543210 or +91 9876543210).' };
+  }
+
+  const firstDigit = coreNumber.charAt(0);
+  if (!['6', '7', '8', '9'].includes(firstDigit)) {
+    return { isValid: false, message: 'Contact Number must start with 6, 7, 8, or 9.' };
+  }
+
   return { isValid: true, message: '' };
 };
 
@@ -234,15 +271,44 @@ export const getPasswordComplexityDetails = (password = '') => {
 };
 
 /**
- * Validates Email Address
+ * Validates Email Address and Domain Norms
  */
 export const validateEmail = (email) => {
   if (!email || !email.trim()) {
     return { isValid: false, message: 'Email Address is required.' };
   }
-  if (!EMAIL_REGEX.test(email.trim())) {
+  const cleanEmail = email.trim();
+
+  if (!cleanEmail.includes('@')) {
+    return { isValid: false, message: 'A valid Email Address must contain "@" (e.g. name@domain.com).' };
+  }
+
+  const parts = cleanEmail.split('@');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return { isValid: false, message: 'A valid Email Address is required (e.g. name@domain.com).' };
   }
+
+  const [localPart, domainPart] = parts;
+
+  if (domainPart.includes('..') || domainPart.startsWith('.') || domainPart.endsWith('.')) {
+    return { isValid: false, message: 'Email domain name contains invalid dot formatting (e.g. name@domain.com).' };
+  }
+
+  if (!domainPart.includes('.')) {
+    return { isValid: false, message: 'Email domain name must contain a top-level extension (e.g. .com, .in, .org).' };
+  }
+
+  const domainSubparts = domainPart.split('.');
+  const tld = domainSubparts[domainSubparts.length - 1];
+
+  if (!tld || tld.length < 2 || tld.length > 10 || !/^[a-zA-Z]+$/.test(tld)) {
+    return { isValid: false, message: 'Email top-level domain extension must be valid (e.g. .com, .in, .org, .edu).' };
+  }
+
+  if (!EMAIL_REGEX.test(cleanEmail)) {
+    return { isValid: false, message: 'Please enter a valid Email Address (e.g. user@domain.com).' };
+  }
+
   return { isValid: true, message: '' };
 };
 
@@ -319,36 +385,4 @@ export const validateUrl = (url, fieldName = 'URL') => {
   }
 };
 
-// CommonJS compatibility for require() support
-try {
-  if (typeof module !== 'undefined' && module && module.exports) {
-    module.exports = {
-      PAN_REGEX,
-      EMAIL_REGEX,
-      AADHAAR_REGEX,
-      GST_REGEX,
-      CIN_REGEX,
-      USERNAME_REGEX,
-      CONTACT_REGEX,
-      PATENT_REGEX,
-      validateContactNumber,
-      validatePan,
-      validateAadhaar,
-      validatePassword,
-      getPasswordComplexityDetails,
-      validateEmail,
-      validateUsername,
-      validateFullName,
-      validateGst,
-      validateCin,
-      validateUrl,
-      validatePatentId,
-      validatePastOrPresentDate,
-      validateFutureDate,
-      validateDateRange,
-      validateCardDetails
-    };
-  }
-} catch {
-  // Ignored in pure ESM environments
-}
+

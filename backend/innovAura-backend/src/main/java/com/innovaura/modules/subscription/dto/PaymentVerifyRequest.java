@@ -14,4 +14,5 @@ public class PaymentVerifyRequest {
     private String paymentType;
     private Integer subscriptionId;
     private String role;
+    private String otp;
 }

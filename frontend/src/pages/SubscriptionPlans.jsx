@@ -11,11 +11,15 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
 
   // Checkout modal states
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState('card'); // 'card' | 'otp'
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [sentOtpInfo, setSentOtpInfo] = useState(null);
+  const [sendingOtp, setSendingOtp] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
 
   // Cancellation modal states
@@ -80,6 +84,31 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
     fetchData();
   }, []);
 
+  const formatCardNumber = (value) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const matches = v.match(/\d{4,16}/g);
+    const match = matches && matches[0] || '';
+    const parts = [];
+
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4));
+    }
+
+    if (parts.length) {
+      return parts.join(' ');
+    } else {
+      return value;
+    }
+  };
+
+  const formatExpiry = (value) => {
+    let v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    if (v.length >= 2) {
+      return v.substring(0, 2) + '/' + v.substring(2, 4);
+    }
+    return v;
+  };
+
   const handleBuyClick = async (plan) => {
     const planPrice = plan.price ?? plan.Price;
     const planId = plan.id ?? plan.Id;
@@ -113,8 +142,8 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
         return;
       }
 
-      // 2. Open Razorpay SDK if real live key configured, otherwise use built-in Payment Gateway Modal
-      const isRealKey = orderRes.keyId && !orderRes.keyId.includes('placeholder');
+      // 2. Open Razorpay SDK if live key configured (not test/placeholder), otherwise use built-in Payment Gateway Modal
+      const isRealKey = orderRes.keyId && !orderRes.keyId.toLowerCase().includes('placeholder') && !orderRes.keyId.toLowerCase().includes('test');
 
       if (window.Razorpay && isRealKey) {
         const options = {
@@ -163,14 +192,31 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
           }
         };
         const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (response) {
+          console.warn('Razorpay SDK payment failed/unsupported in test mode. Fallback to built-in gateway modal.', response);
+          setCheckoutPlan({ ...plan, orderId: orderRes.orderId });
+          setCheckoutStep('card');
+          setCardName(user?.fullName || '');
+          setCardNumber('');
+          setCardExpiry('');
+          setCardCvv('');
+          setOtpCode('');
+          setSentOtpInfo(null);
+          setCheckoutError(null);
+          setShowCheckoutModal(true);
+          setBuyingId(null);
+        });
         rzp.open();
       } else {
         // Built-in interactive Payment Gateway modal
         setCheckoutPlan({ ...plan, orderId: orderRes.orderId });
+        setCheckoutStep('card');
         setCardName(user?.fullName || '');
         setCardNumber('');
         setCardExpiry('');
         setCardCvv('');
+        setOtpCode('');
+        setSentOtpInfo(null);
         setCheckoutError(null);
         setShowCheckoutModal(true);
         setBuyingId(null);
@@ -181,34 +227,17 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
     }
   };
 
-  const processPaymentVerification = async () => {
-    if (!checkoutPlan) return;
-    const planId = checkoutPlan.id ?? checkoutPlan.Id;
-    setBuyingId(planId);
+  const handleSendOtp = async () => {
+    setSendingOtp(true);
     setCheckoutError(null);
-
     try {
-      const verifyRes = await api.post('/payment/verify', {
-        orderId: checkoutPlan.orderId || 'order_sim_123',
-        paymentId: 'pay_sim_' + Date.now(),
-        signature: 'sig_sim_verified',
-        paymentType: 'Subscription',
-        subscriptionId: planId,
-        role: user.role,
-      });
-
-      if (verifyRes.success) {
-        setShowCheckoutModal(false);
-        setMessage({ type: 'success', text: verifyRes.message || 'Payment verified & Premium Subscription activated!' });
-        await fetchData();
-        if (onSubscriptionChange) await onSubscriptionChange();
-      } else {
-        setCheckoutError(verifyRes.message || 'Payment verification failed.');
-      }
+      const res = await api.post('/payment/send-otp');
+      setSentOtpInfo(res);
+      setCheckoutStep('otp');
     } catch (err) {
-      setCheckoutError(err.message || 'Payment processing failed.');
+      setCheckoutError(err.message || 'Failed to send OTP to registered email.');
     } finally {
-      setBuyingId(null);
+      setSendingOtp(false);
     }
   };
 
@@ -222,7 +251,45 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
       return;
     }
 
-    processPaymentVerification();
+    handleSendOtp();
+  };
+
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    if (!checkoutPlan) return;
+    if (!otpCode || otpCode.trim().length !== 6) {
+      setCheckoutError('Please enter the 6-digit OTP code sent to your email.');
+      return;
+    }
+
+    const planId = checkoutPlan.id ?? checkoutPlan.Id;
+    setBuyingId(planId);
+    setCheckoutError(null);
+
+    try {
+      const verifyRes = await api.post('/payment/verify', {
+        orderId: checkoutPlan.orderId || 'order_sim_' + Date.now(),
+        paymentId: 'pay_sim_' + Date.now(),
+        signature: 'sig_sim_verified',
+        paymentType: 'Subscription',
+        subscriptionId: planId,
+        role: user.role,
+        otp: otpCode.trim(),
+      });
+
+      if (verifyRes.success) {
+        setShowCheckoutModal(false);
+        setMessage({ type: 'success', text: verifyRes.message || '💥 BOOM! Security OTP verified & Premium Subscription activated!' });
+        await fetchData();
+        if (onSubscriptionChange) await onSubscriptionChange();
+      } else {
+        setCheckoutError(verifyRes.message || 'Payment verification failed.');
+      }
+    } catch (err) {
+      setCheckoutError(err.message || 'Payment verification failed.');
+    } finally {
+      setBuyingId(null);
+    }
   };
 
   // Guard for Founder & Investor roles only
@@ -403,114 +470,214 @@ export default function SubscriptionPlans({ user, onSubscriptionChange }) {
       {showCheckoutModal && checkoutPlan && (
         <div className="checkout-modal-backdrop">
           <div className="checkout-modal-content">
-            <h3 style={{ marginTop: 0, marginBottom: '0.25rem' }}>Checkout & Payment</h3>
+            <h3 style={{ marginTop: 0, marginBottom: '0.25rem' }}>
+              {checkoutStep === 'otp' ? '🔒 Razorpay Email Security OTP' : 'Checkout & Payment'}
+            </h3>
             <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-              Simulated Payment Gateway — Upgrade to {checkoutPlan.name ?? checkoutPlan.Name}
+              {checkoutStep === 'otp'
+                ? `Enter the 6-digit security code sent to ${sentOtpInfo?.emailMasked || user?.email || 'your email'}`
+                : `Simulated Payment Gateway — Upgrade to ${checkoutPlan.name ?? checkoutPlan.Name}`}
             </p>
 
-            {/* Premium Card Graphic */}
-            <div className="card-preview">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', letterSpacing: '0.1em' }}>MOCK CARD</span>
-                <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>VISA</span>
-              </div>
-              <div style={{ fontSize: '1.25rem', letterSpacing: '0.15em', margin: '1rem 0 0.5rem' }}>
-                {cardNumber || '•••• •••• •••• ••••'}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.5rem', opacity: 0.7 }}>CARDHOLDER</div>
-                  <div>{(cardName || 'Cardholder Name').toUpperCase()}</div>
+            {checkoutStep === 'card' ? (
+              <>
+                {/* Premium Card Graphic */}
+                <div className="card-preview">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', letterSpacing: '0.1em' }}>MOCK CARD</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>VISA</span>
+                  </div>
+                  <div style={{ fontSize: '1.25rem', letterSpacing: '0.15em', margin: '1rem 0 0.5rem' }}>
+                    {cardNumber || '•••• •••• •••• ••••'}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.5rem', opacity: 0.7 }}>CARDHOLDER</div>
+                      <div>{(cardName || 'Cardholder Name').toUpperCase()}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.5rem', opacity: 0.7 }}>EXPIRES</div>
+                      <div>{cardExpiry || 'MM/YY'}</div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '0.5rem', opacity: 0.7 }}>EXPIRES</div>
-                  <div>{cardExpiry || 'MM/YY'}</div>
-                </div>
-              </div>
-            </div>
 
-            <form onSubmit={handleCheckoutSubmit}>
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label>Cardholder Name</label>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{cardName.length}/30 chars</span>
-                </div>
-                <input
-                  type="text"
-                  required
-                  maxLength={30}
-                  className="form-input"
-                  placeholder="e.g. Johnathan Smith (10-30 chars)"
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                />
-              </div>
+                <form onSubmit={handleCheckoutSubmit}>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label>Cardholder Name</label>
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{cardName.length}/30 chars</span>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      maxLength={30}
+                      className="form-input"
+                      placeholder="e.g. Johnathan Smith (10-30 chars)"
+                      value={cardName}
+                      onChange={(e) => setCardName(e.target.value)}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label>Card Number</label>
-                <input
-                  type="text"
-                  required
-                  maxLength="19"
-                  className="form-input"
-                  placeholder="e.g. 4111 2222 3333 4444"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Card Number</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength="19"
+                      className="form-input"
+                      placeholder="e.g. 4111 2222 3333 4444"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                    />
+                  </div>
 
-              <div className="checkout-grid">
+                  <div className="checkout-grid">
+                    <div className="form-group">
+                      <label>Expiry Date</label>
+                      <input
+                        type="text"
+                        required
+                        maxLength="5"
+                        placeholder="MM/YY (e.g. 12/28)"
+                        className="form-input"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>CVV</label>
+                      <input
+                        type="password"
+                        required
+                        maxLength="4"
+                        placeholder="e.g. 123"
+                        className="form-input"
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/g, ''))}
+                      />
+                    </div>
+                  </div>
+
+                  {checkoutError && (
+                    <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      {checkoutError}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ flex: 1 }}
+                      onClick={() => setShowCheckoutModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      style={{ flex: 2 }}
+                      disabled={sendingOtp}
+                    >
+                      {sendingOtp ? 'Sending Email OTP...' : 'Send OTP & Proceed'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              /* OTP Step */
+              <form onSubmit={handleOtpSubmit}>
+                {sentOtpInfo?.otp && (
+                  <div
+                    style={{
+                      background: 'rgba(6, 182, 212, 0.15)',
+                      border: '1px solid rgba(6, 182, 212, 0.4)',
+                      borderRadius: '8px',
+                      padding: '0.9rem',
+                      marginBottom: '1.25rem',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
+                      📩 Security OTP sent to {sentOtpInfo.emailMasked || user?.email}
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '0.25em', color: '#06b6d4' }}>
+                      {sentOtpInfo.otp}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' }}>
+                      Enter this 6-digit code below to verify your payment.
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
-                  <label>Expiry Date</label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                    Enter 6-Digit Email OTP
+                  </label>
                   <input
                     type="text"
                     required
-                    maxLength="5"
-                    placeholder="MM/YY (e.g. 12/28)"
+                    maxLength="6"
+                    autoFocus
                     className="form-input"
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                    placeholder="Enter 6-digit OTP (e.g. 839215)"
+                    style={{
+                      fontSize: '1.5rem',
+                      letterSpacing: '0.3em',
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      padding: '0.75rem',
+                    }}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
                   />
                 </div>
-                <div className="form-group">
-                  <label>CVV</label>
-                  <input
-                    type="password"
-                    required
-                    maxLength="4"
-                    placeholder="e.g. 123"
-                    className="form-input"
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/g, ''))}
-                  />
-                </div>
-              </div>
 
-              {checkoutError && (
-                <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  {checkoutError}
-                </div>
-              )}
+                {checkoutError && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>
+                    {checkoutError}
+                  </div>
+                )}
 
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                  onClick={() => setShowCheckoutModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ flex: 2 }}
-                  disabled={buyingId !== null}
-                >
-                  {buyingId ? 'Processing...' : `Pay ₹${checkoutPlan.price ?? checkoutPlan.Price}`}
-                </button>
-              </div>
-            </form>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <button
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+                    onClick={() => setCheckoutStep('card')}
+                  >
+                    ← Edit Card Details
+                  </button>
+                  <button
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: '#06b6d4', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+                    onClick={handleSendOtp}
+                    disabled={sendingOtp}
+                  >
+                    {sendingOtp ? 'Resending...' : 'Resend OTP to Email'}
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() => setShowCheckoutModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ flex: 2, background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)', fontWeight: 'bold' }}
+                    disabled={buyingId !== null || otpCode.length !== 6}
+                  >
+                    {buyingId ? 'Verifying OTP...' : `Verify OTP & Pay ₹${checkoutPlan.price ?? checkoutPlan.Price}`}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

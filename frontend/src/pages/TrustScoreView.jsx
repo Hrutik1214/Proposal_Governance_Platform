@@ -372,10 +372,6 @@ export default function TrustScoreView({ user }) {
                 hint="Registration, GST, financial statements" />
               <CheckRow label="Patent / IP Verified" value={trustData.patentVerified}
                 hint="Patent status confirmed" />
-              <CheckRow label="Due Diligence Completed" value={trustData.reviewerApproved}
-                hint="Reviewed by a platform reviewer" />
-              <CheckRow label="NDA Protected" value={trustData.ndaProtected}
-                hint="At least one investor signed NDA" />
             </div>
 
             {/* Score contribution bars */}

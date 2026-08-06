@@ -27,7 +27,7 @@ public class Subscription {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
-    @Column(nullable = false, length = 50)
+    @Column(name = "target_role", nullable = false, length = 50)
     private String targetRole;
 
     @Column(nullable = false)

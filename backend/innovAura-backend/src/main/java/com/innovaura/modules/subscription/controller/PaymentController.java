@@ -1,5 +1,6 @@
 package com.innovaura.modules.subscription.controller;
 
+import com.innovaura.modules.subscription.dto.PaymentOtpResponse;
 import com.innovaura.modules.subscription.dto.PaymentVerifyRequest;
 import com.innovaura.modules.subscription.dto.PaymentVerifyResponse;
 import com.innovaura.modules.subscription.service.SubscriptionService;
@@ -14,6 +15,11 @@ public class PaymentController {
 
     @Autowired
     private SubscriptionService subscriptionService;
+
+    @PostMapping("/send-otp")
+    public ResponseEntity<PaymentOtpResponse> sendPaymentOtp(Authentication authentication) {
+        return ResponseEntity.ok(subscriptionService.sendPaymentOtp(authentication.getName()));
+    }
 
     @PostMapping("/verify")
     public ResponseEntity<PaymentVerifyResponse> verifyPayment(Authentication authentication, @RequestBody PaymentVerifyRequest request) {
